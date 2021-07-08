@@ -47,7 +47,7 @@ for (Element link : links) {
 
 Channel.fromList(sampkey)
     .combine( Channel.fromSRA( params.sra_id, apiKey: params.sra_api_key ), by: 0 )
-    .into{ SRA, COUNT_RAW }
+    .into{ SRA; COUNT_RAW }
 
 ///////// FASTQS FROM SRA //////////
 
@@ -76,6 +76,8 @@ process cutadapt {
   ${fq[0]} \
   ${fq[1]}
   """
+
+}
 
 process map_initial {
   label 'map'
@@ -185,7 +187,7 @@ process find_intersecting_snps {
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(inbam), path(snps) from SNPS.combine( SNPIDS.collect().map{ it -> [it] } )
+  tuple pop, rep, path(inbam), path(snps) from SNPS.combine( SNPIDS.collect() )
 
   output:
   tuple pop, rep, path("*.fq1.gz"), path("*.fq2.gz") into REMAP
@@ -264,8 +266,8 @@ process filter_remapped {
 
 process hornet_merge_mapq {
   label 'samtools'
-  publishDir "${params.outdir}/hornet", pattern: unfiltbam
-  publishDir "${params.outdir}/bams/hornet", pattern: outbam
+  publishDir "${params.outdir}/hornet", pattern: "*.unmapq.bam"
+  publishDir "${params.outdir}/bams/hornet", pattern: "*.final.bam"
 
   when:
   params.mode =~ /(all)/
@@ -280,7 +282,7 @@ process hornet_merge_mapq {
   script:
   unfiltbam = "${pop}_${rep}.unmapq.bam"
   outunsort = "${pop}_${rep}.uncoordsort.bam"
-  outbam = "${pop}_${rep}.bam"
+  outbam = "${pop}_${rep}.final.bam"
   """
   samtools merge \
   --threads ${params.samcores} \
@@ -330,7 +332,7 @@ process count_reads {
   shell:
   outname = "${pop}_${rep}_${rtype}.PE_read_count.txt"
   if ( rtype in ['raw', 'trimmed'] ) {
-    """
+    '''
     l1=$(zcat !{reads[0]} | wc -l); \
     l2=$(zcat !{reads[1]} | wc -l); \
     r1=$( echo $l1/4 | bc); \
@@ -338,13 +340,13 @@ process count_reads {
     rt=$( echo $r1+$r2 | bc); \
     p=$( echo $rt/2 | bc); \
     echo !{pop} $'\t' !{rep} $'\t' !{rtype} $'\t' $p > !{outname}
-    """
+    '''
   } else {
-    """
+    '''
     r=$(samtools flagstat --threads !{params.samcores} !{reads} | head -5 | tail -1 | cut -f 1 -d ' '); \
     p=$( echo $r/2 | bc); \
     echo !{pop} $'\t' !{rep} $'\t' !{rtype} $'\t' $p > !{outname}
-    """
+    '''
   }
 
 }
@@ -367,9 +369,9 @@ process concat_counts {
   counts = countlist.findAll{ it.toString().endsWith('.txt') }.sort()
   colnames = ['pop','rep','map_step','PE_reads']
   outname = "PE_read_counts.txt"
-  """
+  '''
   echo !{colnames.join(" $'\t' ")} > !{outname}; \
   cat !{counts.join(' ')} >> !{outname}
-  """
+  '''
 
 }
