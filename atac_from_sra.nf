@@ -79,6 +79,7 @@ process cutadapt {
   script:
   """
   cutadapt \
+  --cores ${params.mapcores} \
   -e 0.20 \
   -a CTGTCTCTTATACACATCT \
   -A CTGTCTCTTATACACATCT \
