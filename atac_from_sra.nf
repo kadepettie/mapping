@@ -27,27 +27,39 @@ import org.jsoup.select.Elements;
 
 ///// SCRAPE NCBI FOR SRA SAMPLE METADATA /////
 
-sampkey = []
+if (params.fastq_local_glob) {
 
-Document doc = Jsoup.connect( params.urlfull ).get();
-Elements links = doc.select("a[href]");
-for (Element link : links) {
-    if ( link.attr("href") =~ /sra\/SRX/ ) {
-        Document doc2 = Jsoup.connect( link.attr("abs:href") ).get()
-        Elements links2 = doc2.select("a[href]")
-        for (Element link2 : links2) {
-            if ( link2.text() =~ /SRR/ ) {
-                ax = link2.text()
-            }
-        }
-        (full, pop, rep) = ( link.text() =~ /.+([A-Z]{3}).+(\d)$/ )[0]
-        sampkey.add( [ax, pop, "rep$rep"] )
-    }
-}
-
-Channel.fromList(sampkey)
-    .combine( Channel.fromSRA( params.sra_id, apiKey: params.sra_api_key ), by: 0 )
+  Channel.fromPath( params.fastq_local_glob )
+    .map{ itg = ( it.getName() =~ /([a-z]{3})([1-2]{1})_(R[1-2]{1})\.fastq\.gz/ )[0]
+          return [ '_', itg[1].toUpperCase(), "rep${itg[2]}", it ] }
+    .groupTuple(by: [0,1,2])
     .into{ SRA; COUNT_RAW }
+
+} else {
+
+  sampkey = []
+
+  Document doc = Jsoup.connect( params.urlfull ).get();
+  Elements links = doc.select("a[href]");
+  for (Element link : links) {
+      if ( link.attr("href") =~ /sra\/SRX/ ) {
+          Document doc2 = Jsoup.connect( link.attr("abs:href") ).get()
+          Elements links2 = doc2.select("a[href]")
+          for (Element link2 : links2) {
+              if ( link2.text() =~ /SRR/ ) {
+                  ax = link2.text()
+              }
+          }
+          (full, pop, rep) = ( link.text() =~ /.+([A-Z]{3}).+(\d)$/ )[0]
+          sampkey.add( [ax, pop, "rep$rep"] )
+      }
+  }
+
+  Channel.fromList(sampkey)
+      .combine( Channel.fromSRA( params.sra_id, apiKey: params.sra_api_key ), by: 0 )
+      .into{ SRA; COUNT_RAW }
+
+}
 
 ///////// FASTQS FROM SRA //////////
 
