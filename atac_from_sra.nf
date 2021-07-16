@@ -158,34 +158,97 @@ process rmdup {
 
 }
 
-Channel.fromPath( params.vcf_dir + '/' + params.vcf_stem )
-    .set{ VCFS }
+Channel.fromPath( params.sample_info )
+  .combine( Channel.fromList( params.vcf_pops ) )
+  .set{ LD_IDS }
 
-process get_snps {
-  label 'snps'
-  publishDir "${params.outdir}/snps"
+process get_vcf_inds {
+  label 'r'
+  publishDir "${params.outdir}/inds/"
 
   when:
   params.mode =~ /(all)/
 
   input:
-  file(vcf) from VCFS
+  tuple path(si), pops from LD_IDS
+
+  output:
+  tuple pops, path(name) into VCF_INDS
+
+  script:
+  name = "${pops}.individuals.txt"
+  """
+  Rscript ${params.bin}/get_1kg_pop_individuals.R \
+  --sample_info $si \
+  --pops $pops \
+  --name $name
+  """
+
+}
+
+Channel.fromPath( params.vcf_dir + '/' + params.vcf_stem )
+    .combine(VCF_INDS)
+    .combine(params.maf)
+    .combine(params.mac)
+    .set{ VCFS }
+
+process subset_vcf {
+  label 'snps'
+  publishDir "${params.outdir}/vcfs/$pops/maf${maf}mac${mac}/"
+
+  when:
+  params.mode =~ /(all)/
+
+  input:
+  tuple file(vcf), pops, path(inds), maf, mac from VCFS
+
+  output:
+  tuple pops, maf, mac, path(outname) into VCFS_SUB
+
+  script:
+  (vcfname, chrom) = ( vcf.getName() =~ /ALL\.(chr[1-9,X,Y]{1,2})\b.+/ )[0]
+  outname = "${chrom}.vcf.gz"
+  if (maf) {
+    allele_filt_string = "--maf $maf"
+  } else {
+    allele_filt_string = "--mac $mac"
+  }
+  """
+  vcftools \
+  --gzvcf $vcf \
+  --keep $inds \
+  $allele_filt_string \
+  --recode \
+  --stdout \
+  | bgzip -c \
+  > $outname
+  """
+
+}
+
+process get_snps {
+  label 'snps'
+  publishDir "${params.outdir}/snps/maf${maf}mac${mac}/"
+
+  when:
+  params.mode =~ /(all)/
+
+  input:
+  tuples pops, maf, mac, path(vcf) from VCFS_SUB
 
   output:
   path(snpout) into SNPIDS // ${chr}.snps.txt.gz
 
   script:
-  (vcfname, chrom) = ( vcf.getName() =~ /ALL\.(chr[1-9,X,Y]{1,2})\b.+/ )[0]
+  chrom = vcf.simpleName
   snpout = "${chrom}.snps.txt.gz"
-  // for now throw out SNPs with multiple alternate alleles
-  // (alleles separated by comma in vcf file)
-  // and copy number variants other insertion types (preceded by '<')
+  // for now throw out copy number variants other insertion types (preceded by '<')
   // TODO: check escape characters working properly
   """
   pigz -dc $vcf \
   | grep -v "^#" \
   | awk '{{printf ("%s\t%s\t%s\n", \$2, \$4, \$5)}}' \
-  | grep -v -e , -e \< \
+  | grep -v -e \< \
   | pigz \
   > $snpout
   """
