@@ -240,19 +240,19 @@ process get_snps {
   output:
   path(snpout) into SNPIDS // ${chr}.snps.txt.gz
 
-  script:
+  shell:
   chrom = vcf.simpleName
   snpout = "${chrom}.snps.txt.gz"
   // for now throw out copy number variants other insertion types (preceded by '<')
   // TODO: check escape characters working properly
-  """
-  pigz -dc $vcf \
-  | grep -v "^#" \
-  | awk '{{printf ("%s\t%s\t%s\n", \$2, \$4, \$5)}}' \
-  | grep -v -e \< \
+  '''
+  pigz -dc !{vcf} \
+  | grep -v '^#' \
+  | awk '{{printf ("%s\t%s\t%s\n", $2, $4, $5)}}' \
+  | grep -v -e \\< \
   | pigz \
   > $snpout
-  """
+  '''
 
 }
 
