@@ -65,7 +65,7 @@ if (params.fastq_local_glob) {
 
 process cutadapt {
   label 'cutadapt'
-  publishDir "${params.outdir}/fastq/"
+  storeDir "${params.outdir}/fastq/"
 
   when:
   params.mode =~ /(all)/
@@ -74,9 +74,10 @@ process cutadapt {
   tuple id, pop, rep, file(fq) from SRA
 
   output:
-  tuple pop, rep, path("*.fastq1.cutadapt.gz"), path("*.fastq2.cutadapt.gz") into BAM_INIT, COUNT_CUTADAPT
+  tuple pop, rep, path("${fqbase}.fastq1.cutadapt.gz"), path("${fqbase}.fastq2.cutadapt.gz") into BAM_INIT, COUNT_CUTADAPT
 
   script:
+  fqbase = "${pop}_${rep}"
   """
   cutadapt \
   --cores ${params.mapcores} \
@@ -84,8 +85,8 @@ process cutadapt {
   -a CTGTCTCTTATACACATCT \
   -A CTGTCTCTTATACACATCT \
   -m 5 \
-  -o ${pop}_${rep}.fastq1.cutadapt.gz \
-  -p ${pop}_${rep}.fastq2.cutadapt.gz \
+  -o ${fqbase}.fastq1.cutadapt.gz \
+  -p ${fqbase}.fastq2.cutadapt.gz \
   ${fq[0]} \
   ${fq[1]}
   """
@@ -94,7 +95,7 @@ process cutadapt {
 
 process map_initial {
   label 'map'
-  publishDir "${params.outdir}/bams/initial/"
+  storeDir "${params.outdir}/bams/initial/"
 
   when:
   params.mode =~ /(all)/
@@ -127,7 +128,7 @@ process map_initial {
 
 process rmdup {
   label 'rmdup'
-  publishDir "${params.outdir}/bams/initial/"
+  storeDir "${params.outdir}/bams/initial/"
 
   when:
   params.mode =~ /(all)/
@@ -188,8 +189,8 @@ process get_vcf_inds {
 
 Channel.fromPath( params.vcf_dir + '/' + params.vcf_stem )
     .combine(VCF_INDS)
-    .combine(params.maf)
-    .combine(params.mac)
+    .combine( Channel.of(params.maf) )
+    .combine( Channel.of(params.mac) )
     .set{ VCFS }
 
 process subset_vcf {
@@ -206,7 +207,7 @@ process subset_vcf {
   tuple pops, maf, mac, path(outname) into VCFS_SUB
 
   script:
-  (vcfname, chrom) = ( vcf.getName() =~ /ALL\.(chr[1-9,X,Y]{1,2})\b.+/ )[0]
+  (vcfname, chrom) = ( vcf.getName() =~ /ALL\.(chr[0-9,X,Y]{1,2})\..+$/ )[0]
   outname = "${chrom}.vcf.gz"
   if (maf) {
     allele_filt_string = "--maf $maf"
@@ -234,7 +235,7 @@ process get_snps {
   params.mode =~ /(all)/
 
   input:
-  tuples pops, maf, mac, path(vcf) from VCFS_SUB
+  tuple pops, maf, mac, path(vcf) from VCFS_SUB
 
   output:
   path(snpout) into SNPIDS // ${chr}.snps.txt.gz
