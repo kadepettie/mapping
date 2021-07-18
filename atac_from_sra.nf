@@ -248,13 +248,18 @@ process get_snps {
   '''
   pigz -dc !{vcf} \
   | grep -v '^#' \
-  | awk '{{printf ("%s\t%s\t%s\n", $2, $4, $5)}}' \
+  | awk '{{printf ("%s\\t%s\\t%s\\n", $2, $4, $5)}}' \
   | grep -v -e \\< \
   | pigz \
-  > $snpout
+  > !{snpout}
   '''
 
 }
+
+SNPIDS
+    .collect()
+    .map{ it -> [it] }
+    .set{ SNPAGG }
 
 process find_intersecting_snps {
   label 'intersecting'
@@ -264,7 +269,7 @@ process find_intersecting_snps {
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(inbam), path(snps) from SNPS.combine( SNPIDS.collect() )
+  tuple pop, rep, path(inbam), path(snps) from SNPS.combine( SNPAGG  )
 
   output:
   tuple pop, rep, path("*.fq1.gz"), path("*.fq2.gz") into REMAP
@@ -273,11 +278,10 @@ process find_intersecting_snps {
 
   script:
   """
-  mkdir snps; \
-  mv *.snps.txt.gz snps; \
   python ${params.hornet_code}/find_intersecting_snps.py \
-  -p $inbam \
-  snps
+  -p \
+  $inbam \
+  .
   """
 
 }
