@@ -451,7 +451,7 @@ process concat_counts {
   colnames = ['pop','rep','map_step','PE_reads']
   outname = "PE_read_counts.txt"
   '''
-  echo !{colnames.join(" $'\\t' ")} > !{outname}; \
+  echo !{colnames.join(" \\$'\\t' ")} > !{outname}; \
   cat !{counts.join(' ')} >> !{outname}
   '''
 
