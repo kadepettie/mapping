@@ -57,7 +57,8 @@ RENAMED
   .set{ COMBSUB }
 
 process subtract {
-
+  
+  label "sort"
   publishDir "${params.outdir}/run2/"
 
   when:
@@ -71,14 +72,18 @@ process subtract {
 
   script:
   """
+  mkdir tmp; \
   gunzip -c \
   ${fq[0]} \
   ${fq[1]} \
   | paste  - - - - \
   | sort \
+  -T ./tmp/ \
   | uniq -u \
   | tr "\\t" "\\n" \
+  | bgzip -c \
   > $fname
   """
 
 }
+
