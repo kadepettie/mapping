@@ -79,6 +79,7 @@ process subtract {
   | paste  - - - - \
   | sort \
   -T ./tmp/ \
+  --parallel=${params.sortcores} \
   | uniq -u \
   | tr "\\t" "\\n" \
   | bgzip -c \
