@@ -32,7 +32,7 @@ Channel.fromPath( params.fastq_sub_glob )
 
 process rename_comb {
 
-  stageInMode "symlink"
+  publishDir "${params.outdir}/sorted_tabular/"
 
   when:
   params.mode =~ /(all)/
@@ -41,24 +41,33 @@ process rename_comb {
   tuple t, pop, rep, rd, path(fq) from COMB.concat(SUB)
 
   output:
-  tuple fname, path(fqout) into RENAMED
+  tuple fname, path(fqout) into SORTED
 
   script:
   fname = fq.getName()
   fqout = "${t}_${fname}"
   """
-  mv $fq $fqout
+  mkdir tmp; \
+  zcat $fq \
+  | paste  - - - - \
+  | sort \
+  -k1,1 \
+  -S 4G \
+  -T ./tmp/ \
+  --parallel=${params.sortcores} \
+  | bgzip -c \
+  > $fqout
   """
 
 }
 
-RENAMED
-  .groupTuple( by: 0 )
+SORTED
+  .groupTuple( by: 0, sort: true, size: 2 )
   .set{ COMBSUB }
 
 process subtract {
-  
-  label "sort"
+
+  label "comm"
   publishDir "${params.outdir}/run2/"
 
   when:
@@ -72,19 +81,14 @@ process subtract {
 
   script:
   """
-  mkdir tmp; \
-  gunzip -c \
-  ${fq[0]} \
-  ${fq[1]} \
-  | paste  - - - - \
-  | sort \
-  -T ./tmp/ \
-  --parallel=${params.sortcores} \
-  | uniq -u \
+  join \
+  -j 1 \
+  -v 1 \
+  <(zcat ${fq[0]}) \
+  <(zcat ${fq[1]}) \
   | tr "\\t" "\\n" \
   | bgzip -c \
   > $fname
   """
 
 }
-
