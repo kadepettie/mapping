@@ -20,42 +20,15 @@
 out = file(params.outdir)
 if( !out.exists() ) out.mkdir()
 
-params{
-  outdir = '190721output'
-  mode = "all" // all
-  fastq_comb_glob = "/godot/shared_data/atacseq/fastqs/combined/*.fastq.gz"
-  fastq_sub_glob = "/godot/shared_data/ashley_ATACseqData/fastqs/combined_runs/*.fastq.gz"
-}
-
-process{
-  errorStrategy = 'finish'
-  maxForks = 200
-  stageInMode = 'rellink'
-  cpus = 1
-  memory = '4G'
-  time  = '8h'
-}
-
-executor{
-  name = 'slurm'
-  submitRateLimit = '1 sec'
-  queueSize = 500
-}
-
-notification{
-  enabled = true
-  to = 'kpettie@stanford.edu'
-}
-
 Channel.fromPath( params.fastq_comb_glob )
   .map{ itg = ( it.getName() =~ /([a-z]{3})([1-2]{1})_(R[1-2]{1})\.fastq\.gz/ )[0]
         return [ "comb", itg[1].toUpperCase(), "rep${itg[2]}", itg[3], it ] }
-  .into{ COMB }
+  .set{ COMB }
 
 Channel.fromPath( params.fastq_sub_glob )
   .map{ itg = ( it.getName() =~ /([a-z]{3})([1-2]{1})_(R[1-2]{1})\.fastq\.gz/ )[0]
         return [ "sub", itg[1].toUpperCase(), "rep${itg[2]}", itg[3], it ] }
-  .into{ SUB }
+  .set{ SUB }
 
 process rename_comb {
 
@@ -65,13 +38,13 @@ process rename_comb {
   params.mode =~ /(all)/
 
   input:
-  tuple t, pop, rep, rd, path(fq) from RENAME.concat(SUB)
+  tuple t, pop, rep, rd, path(fq) from COMB.concat(SUB)
 
   output:
   tuple fname, path(fqout) into RENAMED
 
   script:
-  fname = fq.getName
+  fname = fq.getName()
   fqout = "${t}_${fname}"
   """
   mv $fq $fqout
@@ -84,6 +57,8 @@ RENAMED
   .set{ COMBSUB }
 
 process subtract {
+
+  publishDir "${params.outdir}/run2/"
 
   when:
   params.mode =~ /(all)/
