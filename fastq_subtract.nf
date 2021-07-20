@@ -30,7 +30,7 @@ Channel.fromPath( params.fastq_sub_glob )
         return [ "sub", itg[1].toUpperCase(), "rep${itg[2]}", itg[3], it ] }
   .set{ SUB }
 
-process rename_comb {
+process sort {
 
   label "sort"
   publishDir "${params.outdir}/sorted_tabular/"
