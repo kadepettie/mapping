@@ -32,6 +32,7 @@ Channel.fromPath( params.fastq_sub_glob )
 
 process rename_comb {
 
+  label "sort"
   publishDir "${params.outdir}/sorted_tabular/"
 
   when:
@@ -67,7 +68,7 @@ SORTED
 
 process subtract {
 
-  label "comm"
+  label "sort"
   publishDir "${params.outdir}/run2/"
 
   when:
