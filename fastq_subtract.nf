@@ -53,7 +53,7 @@ process sort {
   | paste  - - - - \
   | sort \
   -k1,1 \
-  -S 4G \
+  -S ${params.sortmem} \
   -T ./tmp/ \
   --parallel=${params.sortcores} \
   | bgzip -c \
