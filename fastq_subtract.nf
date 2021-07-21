@@ -68,7 +68,7 @@ SORTED
 
 process subtract {
 
-  label "sort"
+  label "subtract"
   publishDir "${params.outdir}/run2/"
 
   when:
