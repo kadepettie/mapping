@@ -19,6 +19,8 @@
 
 out = file(params.outdir)
 if( !out.exists() ) out.mkdir()
+tmpdir = file(params.tmpdir)
+if( !tmpdir.exists() ) tmpdir.mkdir()
 
 Channel.fromPath( params.fastq_comb_glob )
   .map{ itg = ( it.getName() =~ /([a-z]{3})([1-2]{1})_(R[1-2]{1})\.fastq\.gz/ )[0]
@@ -48,13 +50,13 @@ process sort {
   fname = fq.getName()
   fqout = "${t}_${fname}"
   """
-  mkdir tmp; \
+  mkdir ${params.tmpdir}/${fqout}; \
   zcat $fq \
-  | paste  - - - - \
+  | paste - - - - \
   | sort \
-  -k1,1 \
+  -k 1,1 \
   -S ${params.sortmem} \
-  -T ./tmp/ \
+  -T ${params.tmpdir}/${fqout} \
   --parallel=${params.sortcores} \
   | bgzip -c \
   > $fqout
