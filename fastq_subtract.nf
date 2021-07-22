@@ -51,14 +51,17 @@ process sort {
   fqout = "${t}_${fname}"
   """
   mkdir -p ${params.tmpdir}/${fqout}; \
-  zcat $fq \
+  pigz -cd \
+  -p ${params.sortcores} \
+  $fq \
   | paste - - - - \
   | sort \
   -k 1,1 \
   -S ${params.sortmem} \
   -T ${params.tmpdir}/${fqout} \
   --parallel=${params.sortcores} \
-  | bgzip -c \
+  | pigz -c \
+  -p ${params.sortcores} \
   > $fqout
   """
 
