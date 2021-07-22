@@ -35,7 +35,7 @@ Channel.fromPath( params.fastq_sub_glob )
 process sort {
 
   label "sort"
-  publishDir "${params.outdir}/sorted_tabular/"
+  storeDir "${params.outdir}/sorted_tabular/"
 
   when:
   params.mode =~ /(all)/
@@ -50,7 +50,7 @@ process sort {
   fname = fq.getName()
   fqout = "${t}_${fname}"
   """
-  mkdir ${params.tmpdir}/${fqout}; \
+  mkdir -p ${params.tmpdir}/${fqout}; \
   zcat $fq \
   | paste - - - - \
   | sort \
@@ -83,12 +83,13 @@ process subtract {
   path(fname) into SUBBED
 
   script:
+  fqsort = fq.sort()
   """
   join \
   -j 1 \
   -v 1 \
-  <(zcat ${fq[0]}) \
-  <(zcat ${fq[1]}) \
+  <(zcat ${fqsort[0]}) \
+  <(zcat ${fqsort[1]}) \
   | tr "\\t" "\\n" \
   | bgzip -c \
   > $fname
