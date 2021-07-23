@@ -86,7 +86,7 @@ process subtract {
   path(fname) into SUBBED
 
   script:
-  fqsort = fq.sort()
+  fqsort = [ fq[0].getName(), fq[1].getName() ].findAll{ it.toString().endsWith('.fastq.gz') }.sort()
   """
   join \
   -j 1 \
