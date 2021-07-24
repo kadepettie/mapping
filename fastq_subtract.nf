@@ -91,10 +91,12 @@ process subtract {
   join \
   -j 1 \
   -v 1 \
-  <(zcat ${fqsort[0]}) \
-  <(zcat ${fqsort[1]}) \
+  -t "t" \
+  <(pigz -dc ${fqsort[0]}) \
+  <(pigz -dc ${fqsort[1]}) \
   | tr "\\t" "\\n" \
-  | bgzip -c \
+  | pigz -c \
+  -p ${params.subcores} \
   > $fname
   """
 

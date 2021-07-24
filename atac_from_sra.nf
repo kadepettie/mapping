@@ -65,7 +65,8 @@ if (params.fastq_local_glob) {
 
 process cutadapt {
   label 'cutadapt'
-  storeDir "${params.outdir}/fastq/"
+  publishDir "${params.outdir}/fastq/"
+  stageInMode 'symlink'
 
   when:
   params.mode =~ /(all)/
@@ -78,6 +79,7 @@ process cutadapt {
 
   script:
   fqbase = "${pop}_${rep}"
+  fqsort = [ fq[0].getName(), fq[1].getName() ].findAll{ it.toString().endsWith('.fastq.gz') }.sort()
   """
   cutadapt \
   --cores ${params.mapcores} \
@@ -87,15 +89,15 @@ process cutadapt {
   -m 5 \
   -o ${fqbase}.fastq1.cutadapt.gz \
   -p ${fqbase}.fastq2.cutadapt.gz \
-  ${fq[0]} \
-  ${fq[1]}
+  ${fqsort[0]} \
+  ${fqsort[1]}
   """
 
 }
 
 process map_initial {
   label 'map'
-  storeDir "${params.outdir}/bams/initial/"
+  publishDir "${params.outdir}/bams/initial/"
 
   when:
   params.mode =~ /(all)/
@@ -128,7 +130,7 @@ process map_initial {
 
 process rmdup {
   label 'rmdup'
-  storeDir "${params.outdir}/bams/initial/"
+  publishDir "${params.outdir}/bams/initial/"
 
   when:
   params.mode =~ /(all)/
@@ -238,7 +240,7 @@ process get_snps {
   tuple pops, maf, mac, path(vcf) from VCFS_SUB
 
   output:
-  path(snpout) into SNPIDS // ${chr}.snps.txt.gz
+  tuple maf, mac, path(snpout) into SNPIDS // ${chr}.snps.txt.gz
 
   shell:
   chrom = vcf.simpleName
@@ -257,24 +259,23 @@ process get_snps {
 }
 
 SNPIDS
-    .collect()
-    .map{ it -> [it] }
+    .groupTuple( by: [0,1] )
     .set{ SNPAGG }
 
 process find_intersecting_snps {
   label 'intersecting'
-  publishDir "${params.outdir}/hornet"
+  publishDir "${params.outdir}/hornet/maf${maf}mac${mac}/"
 
   when:
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(inbam), path(snps) from SNPS.combine( SNPAGG  )
+  tuple pop, rep, path(inbam), maf, mac, path(snps) from SNPS.combine( SNPAGG  )
 
   output:
-  tuple pop, rep, path("*.fq1.gz"), path("*.fq2.gz") into REMAP
-  tuple pop, rep, path("*.to.remap.bam") into FILT_REMAP, COUNT_REMAP
-  tuple pop, rep, path("*.keep.bam") into KEEP_MERGE, COUNT_KEEP
+  tuple pop, rep, maf, mac, path("*.fq1.gz"), path("*.fq2.gz") into REMAP
+  tuple pop, rep, maf, mac, path("*.to.remap.bam") into FILT_REMAP, COUNT_REMAP
+  tuple pop, rep, maf, mac, path("*.keep.bam") into KEEP_MERGE, COUNT_KEEP
 
   script:
   """
@@ -288,16 +289,16 @@ process find_intersecting_snps {
 
 process remap {
   label 'map'
-  publishDir "${params.outdir}/hornet"
+  publishDir "${params.outdir}/hornet/maf${maf}mac${mac}/"
 
   when:
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(fq1), path(fq2) from REMAP
+  tuple pop, rep, maf, mac, path(fq1), path(fq2) from REMAP
 
   output:
-  tuple pop, rep, path(outbam) into REMAPPED
+  tuple pop, rep, maf, mac, path(outbam) into REMAPPED
 
   script:
   outunsort = "${pop}_${rep}.remap.unnamesort.bam"
@@ -322,16 +323,16 @@ process remap {
 
 process filter_remapped {
   label 'filter'
-  publishDir "${params.outdir}/hornet"
+  publishDir "${params.outdir}/hornet/maf${maf}mac${mac}/"
 
   when:
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(orig), path(remapped) from FILT_REMAP.combine( REMAPPED, by: [0,1] )
+  tuple pop, rep, maf, mac, path(orig), path(remapped) from FILT_REMAP.combine( REMAPPED, by: [0,1,2,3] )
 
   output:
-  tuple pop, rep, path(outbam) into KEPT_MERGE, COUNT_KEPT
+  tuple pop, rep, maf, mac, path(outbam) into KEPT_MERGE, COUNT_KEPT
 
   script:
   outbam = "${pop}_${rep}.kept.bam"
@@ -347,18 +348,18 @@ process filter_remapped {
 
 process hornet_merge_mapq {
   label 'samtools'
-  publishDir "${params.outdir}/hornet", pattern: "*.unmapq.bam"
-  publishDir "${params.outdir}/bams/hornet", pattern: "*.final.bam"
+  publishDir "${params.outdir}/hornet/maf${maf}mac${mac}/", pattern: "*.unmapq.bam"
+  publishDir "${params.outdir}/bams/hornet/maf${maf}mac${mac}/", pattern: "*.final.bam"
 
   when:
   params.mode =~ /(all)/
 
   input:
-  tuple pop, rep, path(keep), path(kept) from KEEP_MERGE.combine( KEPT_MERGE, by: [0,1] )
+  tuple pop, rep, maf, mac, path(keep), path(kept) from KEEP_MERGE.combine( KEPT_MERGE, by: [0,1,2,3] )
 
   output:
-  tuple pop, rep, path(outbam) into ANAL, COUNT_FINAL
-  tuple pop, rep, path(unfiltbam) into COUNT_UNMAPQ
+  tuple pop, rep, maf, mac, path(outbam) into ANAL, COUNT_FINAL
+  tuple pop, rep, maf, mac, path(unfiltbam) into COUNT_UNMAPQ
 
   script:
   unfiltbam = "${pop}_${rep}.unmapq.bam"
@@ -383,32 +384,33 @@ process hornet_merge_mapq {
 
 }
 
-COUNT_RAW.map{ it -> ['raw', it[1], it[2], it[3] ] }
-  .concat( COUNT_CUTADAPT.map{ it -> [ 'trimmed', it[0], it[1], [it[2], it[3]] ] } )
-  .concat( COUNT_INITIAL.map{ it -> [ 'initial', it[0], it[1], it[2] ] } )
-  .concat( COUNT_RMDUP.map{ it -> [ 'rmdup', it[0], it[1], it[2] ] } )
-  .concat( COUNT_KEEP.map{ it -> [ 'no_var', it[0], it[1], it[2] ] } )
-  .concat( COUNT_REMAP.map{ it -> [ 'var', it[0], it[1], it[2] ] } )
-  .concat( COUNT_KEPT.map{ it -> [ 'kept_var', it[0], it[1], it[2] ] } )
-  .concat( COUNT_UNMAPQ.map{ it -> [ 'unmapq', it[0], it[1], it[2] ] } )
-  .concat( COUNT_FINAL.map{ it -> [ 'final', it[0], it[1], it[2] ] } )
+COUNT_RAW.map{ it -> ['raw', it[1], it[2], '_', '_', it[3] ] }
+  .concat( COUNT_CUTADAPT.map{ it -> [ 'trimmed', it[0], it[1], '_', '_', [it[2], it[3]] ] } )
+  .concat( COUNT_INITIAL.map{ it -> [ 'initial', it[0], it[1], '_', '_', it[2] ] } )
+  .concat( COUNT_RMDUP.map{ it -> [ 'rmdup', it[0], it[1], '_', '_', it[2] ] } )
+  .concat( COUNT_KEEP.map{ it -> [ 'no_var', it[0], it[1], it[2], it[3], it[4] ] } )
+  .concat( COUNT_REMAP.map{ it -> [ 'var', it[0], it[1], it[2], it[3], it[4] ] } )
+  .concat( COUNT_KEPT.map{ it -> [ 'kept_var', it[0], it[1], it[2], it[3], it[4] ] } )
+  .concat( COUNT_UNMAPQ.map{ it -> [ 'unmapq', it[0], it[1], it[2], it[3], it[4] ] } )
+  .concat( COUNT_FINAL.map{ it -> [ 'final', it[0], it[1], it[2], it[3], it[4] ] } )
   .set{ COUNT }
 
 process count_reads {
   label 'samtools'
-  publishDir "${params.outdir}/counts"
-
+  publishDir "${params.outdir}/counts/separate/maf${maf}mac${mac}/"
+  stageInMode { rtype=='raw' ? 'symlink' : 'rellink' }
+  
   cpus { rtype in ['raw', 'trimmed'] ? 1 : params.samcores }
-  memory { rtype in ['raw', 'trimmed'] ? '4G' : '48G' }
+  memory { rtype in ['raw', 'trimmed'] ? '4G' : '8G' }
 
   when:
   params.mode =~ /(all)/
 
   input:
-  tuple rtype, pop, rep, path(reads) from COUNT
+  tuple rtype, pop, rep, maf, mac, path(reads) from COUNT
 
   output:
-  path(outname) into CONCAT_COUNTS
+  tuple maf, mac, path(outname) into CONCAT_COUNTS
 
   shell:
   outname = "${pop}_${rep}_${rtype}.PE_read_count.txt"
@@ -432,8 +434,23 @@ process count_reads {
 
 }
 
+CONCAT_COUNTS
+    .branch{
+        PRE_HORNET: it[0]=='_' && it[1]=='_'
+            return it[2]
+        HORNET:     true
+    }
+    .set{ CONCAT_COUNTS_BR }
+
+Channel.of( params.maf )
+    .combine( Channel.of( params.mac ) )
+    .combine( CONCAT_COUNTS_BR.PRE_HORNET )
+    .concat( CONCAT_COUNTS_BR.HORNET )
+    .groupTuple( by: [0,1] )
+    .set{ CONCAT_COUNTS_FINAL }
+
 process concat_counts {
-  publishDir "${params.outdir}/counts"
+  publishDir "${params.outdir}/counts/maf${maf}mac${mac}/"
 
   time = '10m'
 
@@ -441,7 +458,7 @@ process concat_counts {
   params.mode =~ /(all)/
 
   input:
-  path(countlist) from CONCAT_COUNTS.collect()
+  tuple maf, mac, path(countlist) from CONCAT_COUNTS_FINAL
 
   output:
   path(outname) into PLOT_COUNTS
