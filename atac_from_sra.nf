@@ -65,7 +65,7 @@ if (params.fastq_local_glob) {
 
 process cutadapt {
   label 'cutadapt'
-  publishDir "${params.outdir}/fastq/"
+  storeDir params.initdir + "/fastq/"
   stageInMode 'symlink'
 
   when:
@@ -97,7 +97,7 @@ process cutadapt {
 
 process map_initial {
   label 'map'
-  publishDir "${params.outdir}/bams/initial/"
+  storeDir params.initdir + "/bams/initial/"
 
   when:
   params.mode =~ /(all)/
@@ -106,7 +106,7 @@ process map_initial {
   tuple pop, rep, path(fq1), path(fq2) from BAM_INIT
 
   output:
-  tuple pop, rep, path(outbam) into RMDUP, COUNT_INITIAL
+  tuple pop, rep, path(outbam) into MAPQ, COUNT_INITIAL
 
   script:
   outunsort = "${pop}_${rep}.initial.uncoordsort.bam"
@@ -128,6 +128,31 @@ process map_initial {
 
 }
 
+process mapq {
+  label 'samtools'
+  publishDir "${params.outdir}/bams/initial/"
+
+  when:
+  params.mode =~ /(all)/
+
+  input:
+  tuple pop, rep, path(bam) from MAPQ
+
+  output:
+  tuple pop, rep, path(outbam) into RMDUP, COUNT_MAPQ
+
+  script:
+  outbam = "${pop}_${rep}.initial.mapq.bam"
+  """
+  samtools view \
+  --threads ${params.samcores} \
+  -bq ${params.mapq} \
+  $bam \
+  > $outbam
+  """
+
+}
+
 process rmdup {
   label 'rmdup'
   publishDir "${params.outdir}/bams/initial/"
@@ -143,7 +168,7 @@ process rmdup {
   path(outlog)
 
   script:
-  outbam = "${pop}_${rep}.initial.rmdup.bam"
+  outbam = "${pop}_${rep}.initial.mapq.rmdup.bam"
   outlog = "${outbam}.log"
   """
   picard MarkDuplicates \
@@ -348,7 +373,6 @@ process filter_remapped {
 
 process hornet_merge_mapq {
   label 'samtools'
-  publishDir "${params.outdir}/hornet/maf${maf}mac${mac}/", pattern: "*.unmapq.bam"
   publishDir "${params.outdir}/bams/hornet/maf${maf}mac${mac}/", pattern: "*.final.bam"
 
   when:
@@ -359,23 +383,16 @@ process hornet_merge_mapq {
 
   output:
   tuple pop, rep, maf, mac, path(outbam) into ANAL, COUNT_FINAL
-  tuple pop, rep, maf, mac, path(unfiltbam) into COUNT_UNMAPQ
 
   script:
-  unfiltbam = "${pop}_${rep}.unmapq.bam"
   outunsort = "${pop}_${rep}.uncoordsort.bam"
   outbam = "${pop}_${rep}.final.bam"
   """
   samtools merge \
   --threads ${params.samcores} \
-  $unfiltbam \
+  $outunsort \
   $keep \
   $kept; \
-  samtools view \
-  --threads ${params.samcores} \
-  -bq ${params.mapq} \
-  $unfiltbam \
-  > $outunsort; \
   samtools sort \
   --threads ${params.samcores} \
   -o $outbam \
@@ -387,11 +404,11 @@ process hornet_merge_mapq {
 COUNT_RAW.map{ it -> ['raw', it[1], it[2], '_', '_', it[3] ] }
   .concat( COUNT_CUTADAPT.map{ it -> [ 'trimmed', it[0], it[1], '_', '_', [it[2], it[3]] ] } )
   .concat( COUNT_INITIAL.map{ it -> [ 'initial', it[0], it[1], '_', '_', it[2] ] } )
+  .concat( COUNT_MAPQ.map{ it -> [ 'mapq', it[0], it[1], '_', '_', it[2] ] } )
   .concat( COUNT_RMDUP.map{ it -> [ 'rmdup', it[0], it[1], '_', '_', it[2] ] } )
   .concat( COUNT_KEEP.map{ it -> [ 'no_var', it[0], it[1], it[2], it[3], it[4] ] } )
   .concat( COUNT_REMAP.map{ it -> [ 'var', it[0], it[1], it[2], it[3], it[4] ] } )
   .concat( COUNT_KEPT.map{ it -> [ 'kept_var', it[0], it[1], it[2], it[3], it[4] ] } )
-  .concat( COUNT_UNMAPQ.map{ it -> [ 'unmapq', it[0], it[1], it[2], it[3], it[4] ] } )
   .concat( COUNT_FINAL.map{ it -> [ 'final', it[0], it[1], it[2], it[3], it[4] ] } )
   .set{ COUNT }
 
@@ -399,7 +416,7 @@ process count_reads {
   label 'samtools'
   publishDir "${params.outdir}/counts/separate/maf${maf}mac${mac}/"
   stageInMode { rtype=='raw' ? 'symlink' : 'rellink' }
-  
+
   cpus { rtype in ['raw', 'trimmed'] ? 1 : params.samcores }
   memory { rtype in ['raw', 'trimmed'] ? '4G' : '8G' }
 
