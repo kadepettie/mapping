@@ -14,7 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-// Nextflow pipeline to map ATAC-seq reads from SRA fastqs.
+// Nextflow pipeline to map ATAC-seq reads from SRA fastqs. This version
+// filters on MAPQ last
 
 out = file(params.outdir)
 if( !out.exists() ) out.mkdir()
@@ -399,7 +400,7 @@ process count_reads {
   label 'samtools'
   publishDir "${params.outdir}/counts/separate/maf${maf}mac${mac}/"
   stageInMode { rtype=='raw' ? 'symlink' : 'rellink' }
-  
+
   cpus { rtype in ['raw', 'trimmed'] ? 1 : params.samcores }
   memory { rtype in ['raw', 'trimmed'] ? '4G' : '8G' }
 
