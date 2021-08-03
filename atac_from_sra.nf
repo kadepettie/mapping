@@ -129,7 +129,7 @@ process map_initial {
 }
 
 process mapq {
-  label 'samtools'
+  label 'mapq'
   publishDir "${params.outdir}/bams/initial/"
 
   when:
@@ -413,7 +413,7 @@ COUNT_RAW.map{ it -> ['raw', it[1], it[2], '_', '_', it[3] ] }
   .set{ COUNT }
 
 process count_reads {
-  label 'samtools'
+  label 'count'
   publishDir "${params.outdir}/counts/separate/maf${maf}mac${mac}/"
   stageInMode { rtype=='raw' ? 'symlink' : 'rellink' }
 
