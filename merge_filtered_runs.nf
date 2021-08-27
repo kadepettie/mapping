@@ -29,7 +29,7 @@ Channel.fromPath(params.bam_runs)
 // rename to avoid filename conflicts in merge staging directory
 
 process rename {
-  stageInMode = 'symlink'
+  stageInMode 'symlink'
 
   when:
   params.mode =~ /(all)/
@@ -43,18 +43,22 @@ process rename {
   script:
   outbam = "${run}_${samp}.bam"
   """
-  mv $bam $outbam
+  cp $bam $outbam
   """
 
 }
 
 TO_MERGE
   .groupTuple( by: [0] )
+  .tap{ MERGE_CHECK }
   .set{ MERGE }
+
+MERGE_CHECK.view()
 
 process merge_runs {
   label 'samtools'
   publishDir "${params.outdir}/merged"
+  stageInMode "symlink"
 
   when:
   params.mode =~ /(all)/
@@ -133,7 +137,7 @@ process count_reads {
   tuple rtype, samp, path(reads) from COUNT
 
   output:
-  tuple path(outname) into CONCAT_COUNTS
+  path(outname) into CONCAT_COUNTS
 
   shell:
   outname = "${samp}_${rtype}.PE_read_count.txt"
@@ -154,7 +158,7 @@ process concat_counts {
   params.mode =~ /(all)/
 
   input:
-  tuple path(countlist) from CONCAT_COUNTS.collect()
+  path(countlist) from CONCAT_COUNTS.collect()
 
   output:
   path(outname) into PLOT_COUNTS
