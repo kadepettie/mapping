@@ -25,7 +25,7 @@ Channel.fromPath( params.bwt2_global_glob )
   .set{ READS }
 
 process bam_to_fastqs {
-
+  tag "$fqout = $bam + $fq"
   storeDir "${params.outdir}/$sample/"
 
   input:
