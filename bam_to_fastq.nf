@@ -19,34 +19,48 @@
 out = file(params.outdir)
 if( !out.exists() ) out.mkdir()
 
-Channel.fromPath( params.bam_glob )
-  .map{ it -> [ it.getName() - ~/(_001_hg19\.bwt2pairs\.bam)/, it ] }
-  .set{ BAM }
+Channel.fromPath( params.bwt2_global_glob )
+  .map{ it -> [ it.getName() - ~/(_hg19\.bwt2glob\.)(bam)?(unmap\.fastq)?(\.gz)?/, it ] }
+  .groupTuple(by: [0])
+  .set{ READS }
 
 process bam_to_fastqs {
 
   storeDir "${params.outdir}/$sample/"
 
   input:
-  tuple prefix, path(bam) from BAM
+  tuple prefix, path(reads) from READS
 
   output:
   tuple prefix, path(fq1), path(fq2) into FASTQS
 
-  script:
-  sample = prefix - ~/(_L00[0-9]{1}$)/
-  fq1 = "${prefix}_R1_001.fastq.gz"
-  fq2 = "${prefix}_R2_001.fastq.gz"
+  shell:
+  sample = prefix - ~/(_L00[0-9]{1})?(_R1|_R2)?(_001)?$/
+  bamfq = reads.collect{ it.getName() }.sort()
+  bam = bamfq[0]
+  fq = bamfq[1] // must be uncompressed for now (default in hicpro)
+  fqout = "${prefix}.fastq.gz"
   // -n don't append '/1' or '/2' to the end of read names
   // -i add Illumina Casava 1.8 format entry to header (eg 1:N:0:ATCACG)
   // ^doesn't work without additional option specifying the barcode
-  """
+  '''
+  bctag=$(head -1 !{fq} | awk -F $' ' '{ print $2 }');
   samtools fastq \
   -n \
-  -1 $fq1 \
-  -2 $fq2 \
-  --threads ${task.cpus} \
-  $bam
-  """
+  --threads !{task.cpus} \
+  !{bam} \
+  | paste - - - - \
+  | awk -F $'\t' -v bctag="$bctag" '{ print $1" "bctag, $2, $3, $4 }' OFS='\t' \
+  | cat - <(cat !{fq} | paste - - - - ) \
+  | sort \
+  -k 1,1 \
+  -S !{task.memory} \
+  -T !{params.tmpdir}/!{prefix} \
+  --parallel=!{task.cpus} \
+  | tr "\t" "\n" \
+  | pigz -c \
+  -p !{task.cpus} \
+  > !{fqout}
+  '''
 
 }
