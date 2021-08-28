@@ -50,14 +50,14 @@ process bam_to_fastqs {
   --threads !{task.cpus} \
   !{bam} \
   | paste - - - - \
-  | awk -F $'\t' -v bctag="$bctag" '{ print $1" "bctag, $2, $3, $4 }' OFS='\t' \
+  | awk -F $'\\t' -v bctag="$bctag" '{ print $1" "bctag, $2, $3, $4 }' OFS='\\t' \
   | cat - <(cat !{fq} | paste - - - - ) \
   | sort \
   -k 1,1 \
   -S !{task.memory} \
   -T !{params.tmpdir}/!{prefix} \
   --parallel=!{task.cpus} \
-  | tr "\t" "\n" \
+  | tr "\\t" "\\n" \
   | pigz -c \
   -p !{task.cpus} \
   > !{fqout}
